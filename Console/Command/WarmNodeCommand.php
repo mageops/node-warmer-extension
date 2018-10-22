@@ -32,7 +32,7 @@ class WarmNodeCommand extends \Symfony\Component\Console\Command\Command
     protected function configure()
     {
         $this
-            ->setName('mageops:warm-node')
+            ->setName('cs:warm-node')
             ->setDescription('Warms node cache and optionally clears cache if new code is detected. This command shall be ran when new app node is added as the first thing on it.')
             ->addOption('force', 'f', \Symfony\Component\Console\Input\InputOption::VALUE_NONE, 'Force even if already warm')
             ->addOption('local-url', 'u', \Symfony\Component\Console\Input\InputOption::VALUE_REQUIRED, 'Url of the local app instance', 'http://localhost:80');
