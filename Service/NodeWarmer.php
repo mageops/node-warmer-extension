@@ -167,13 +167,22 @@ class NodeWarmer
             '/contentconstructor/components/index/page/herocarousel-large/',
             '/contentconstructor/components/index/page/herocarousel-slider/',
             '/contentconstructor/components/index/page/herocarousel-hidden/',
+            '/contentconstructor/components/index/page/itlegacywindowwidth/',
+            '/contentconstructor/components/index/page/itlegacycontainerwidth/',
+            '/contentconstructor/components/index/page/itlegacywindowwidthslider/',
+            '/contentconstructor/components/index/page/itlegacycontainerwidthslider/',
             '/contentconstructor/components/index/page/itwindowwidth/',
             '/contentconstructor/components/index/page/itcontainerwidth/',
             '/contentconstructor/components/index/page/itwindowwidthslider/',
             '/contentconstructor/components/index/page/itcontentwidthslider/',
+            '/contentconstructor/components/index/page/contrastoptimizers/',
+            '/contentconstructor/components/index/page/ttwindowwidth/',
+            '/contentconstructor/components/index/page/ttcontainerwidth/',
+            '/contentconstructor/components/index/page/icon/',
             '/contentconstructor/components/index/page/productgridnohero/',
             '/contentconstructor/components/index/page/productgridheroleft/',
             '/contentconstructor/components/index/page/productgridheroright/',
+            '/contentconstructor/components/index/page/headline/',
             '/contentconstructor/components/index/page/paragraph/'
         ];
     }
