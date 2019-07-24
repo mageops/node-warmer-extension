@@ -183,7 +183,10 @@ class NodeWarmer
             '/contentconstructor/components/index/page/productgridheroleft/',
             '/contentconstructor/components/index/page/productgridheroright/',
             '/contentconstructor/components/index/page/headline/',
-            '/contentconstructor/components/index/page/paragraph/'
+            '/contentconstructor/components/index/page/paragraph/',
+            '/contentconstructor/components/index/page/productfinder/',
+            '/contentconstructor/components/index/page/instagram
+           /'
         ];
     }
 
