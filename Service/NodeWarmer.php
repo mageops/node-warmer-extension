@@ -114,19 +114,33 @@ class NodeWarmer
         }
 
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
-            try {
-                $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
+            $attempt = 1;
+            $finished = false;
 
-                foreach ($urls as $url) {
-                    $this->queryUrl($localUrl . $url['path'], $url['host']);
+            do {
+                try {
+                    $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
+
+                    foreach ($urls as $url) {
+                        $this->queryUrl($localUrl . $url['path'], $url['host']);
+                    }
+
+                    $finished = true;
                 }
+                catch(\Exception $exception) {
+                    $this->logger->error(sprintf(
+                        'Unable to warmup merged assets during attempt %d: %s, %s',
+                        $attempt,
+                        $exception->getMessage(),
+                        $exception->getTraceAsString()
+                    ));
+
+                    sleep(1);
+                }
+
+                $attempt++;
             }
-            catch(\Exception $exception) {
-                $this->logger->error(sprintf(
-                    'Unable to warmup merged assets: %s',
-                    $exception->getMessage()
-                ));
-            }
+            while(!$finished && $attempt < 10);
 
             $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
         }
