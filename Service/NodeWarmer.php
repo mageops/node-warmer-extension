@@ -8,44 +8,49 @@ class NodeWarmer
     const WARMUP_TIMEOUT = 60;
 
     /**
+     * @var MergedAssetsWarmupUrlsProvider
+     */
+    protected $mergedAssetsWarmupUrlsProvider;
+
+    /**
      * @var \MageOps\NodeWarmer\Model\Config
      */
-    private $config;
+    protected $config;
 
     /**
      * @var \Magento\Framework\Event\ManagerInterface
      */
-    private $eventManager;
+    protected $eventManager;
 
     /**
      * @var \Magento\Framework\App\Cache\Manager
      */
-    private $cacheManager;
+    protected $cacheManager;
 
     /**
      * @var \Magento\Framework\App\Filesystem\DirectoryList
      */
-    private $directoryList;
+    protected $directoryList;
 
     /**
      * @var \Magento\Store\Model\StoreManagerInterface
      */
-    private $storeManager;
+    protected $storeManager;
 
     /**
      * @var \Magento\Framework\UrlInterface
      */
-    private $urlGenerator;
+    protected $urlGenerator;
 
     /**
      * @var \Psr\Log\LoggerInterface
      */
-    private $logger;
+    protected $logger;
 
     /**
      * @var \GuzzleHttp\Client
      */
-    private $http;
+    protected $http;
 
     public function __construct(
         \MageOps\NodeWarmer\Model\Config $config,
@@ -54,6 +59,7 @@ class NodeWarmer
         \Magento\Framework\App\Filesystem\DirectoryList $directoryList,
         \Magento\Store\Model\StoreManagerInterface $storeManager,
         \Magento\Framework\UrlInterface $urlGenerator,
+        MergedAssetsWarmupUrlsProvider $mergedAssetsWarmupUrlsProvider,
         \Psr\Log\LoggerInterface $logger
     )
     {
@@ -63,157 +69,14 @@ class NodeWarmer
         $this->directoryList = $directoryList;
         $this->storeManager = $storeManager;
         $this->urlGenerator = $urlGenerator;
+        $this->mergedAssetsWarmupUrlsProvider = $mergedAssetsWarmupUrlsProvider;
         $this->logger = new \MageOps\NodeWarmer\Log\CapturingLoggerDecorator($logger);
+
         $this->http = new \GuzzleHttp\Client([
             'timeout' => self::WARMUP_TIMEOUT,
             'allow_redirects' => true,
             'http_errors' => false,
         ]);
-    }
-
-    private function flushCache()
-    {
-        $this->eventManager->dispatch('adminhtml_cache_flush_all');
-        $this->cacheManager->flush($this->cacheManager->getAvailableTypes());
-    }
-
-    /**
-     * @return string
-     */
-    private function getComposerLockPath()
-    {
-        return $this->directoryList->getRoot() . '/composer.lock';
-    }
-
-    /**
-     * @return string
-     */
-    public function getWarmupLogFilePath()
-    {
-        return $this->directoryList->getPath('pub') . '/' . self::WARM_LOG_FILENAME;
-    }
-
-    private function saveWarmupLog()
-    {
-        $path = $this->getWarmupLogFilePath();
-        $formatter = new \MageOps\NodeWarmer\Log\LogFormatter();
-
-        file_put_contents(
-            $path,
-            $formatter->formatBatch($this->logger->flush())
-        );
-    }
-
-    /**
-     * @return string
-     */
-    private function getDefaultHost()
-    {
-        return parse_url(
-            $this->storeManager->getStore()->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB),
-            PHP_URL_HOST
-        );
-    }
-
-    /**
-     * @param string $url
-     * @param string $fakeHost
-     */
-    private function queryUrl($url, $fakeHost = null)
-    {
-        $stopwatch = new \Symfony\Component\Stopwatch\Stopwatch();
-        $stopwatch->start('get');
-
-        $this->logger->info(sprintf('Querying url "%s" with host "%s"', $url, $fakeHost));
-
-        try {
-            $response = $this->http->get($url, [
-                'headers' => [
-                    'Host' => $fakeHost,
-                    'X-Forwarded-Host' => $fakeHost,
-                    'X-Forwarded-Proto' => 'https',
-                ]
-            ]);
-
-            $this->logger->info(sprintf('GET "%s" returned %d %s, took %.2fs',
-                $url,
-                $response->getStatusCode(),
-                $response->getReasonPhrase(),
-                $stopwatch->stop('get')->getDuration() / 1000.0
-            ));
-        } catch (\Exception $exception) {
-            $this->logger->warning(sprintf('Could not get "%s" because %s: %s',
-                get_class($exception),
-                $exception->getMessage()
-            ));
-        }
-    }
-
-    /**
-     * @param string $route
-     * @return string
-     */
-    private function generateRoutePath($route)
-    {
-        return parse_url($this->urlGenerator->getUrl($route), PHP_URL_PATH);
-    }
-
-    private function getWarmupPaths()
-    {
-        return [
-            '/',
-            $this->generateRoutePath('checkout/cart'),
-            '/contentconstructor/components',
-            '/contentconstructor/components/index/page/herocarousel-large/',
-            '/contentconstructor/components/index/page/herocarousel-slider/',
-            '/contentconstructor/components/index/page/herocarousel-hidden/',
-            '/contentconstructor/components/index/page/itlegacywindowwidth/',
-            '/contentconstructor/components/index/page/itlegacycontainerwidth/',
-            '/contentconstructor/components/index/page/itlegacywindowwidthslider/',
-            '/contentconstructor/components/index/page/itlegacycontainerwidthslider/',
-            '/contentconstructor/components/index/page/itbrowserwidth/',
-            '/contentconstructor/components/index/page/itcontentwidth/',
-            '/contentconstructor/components/index/page/itbrowserwidthslider/',
-            '/contentconstructor/components/index/page/itcontentwidthslider/',
-            '/contentconstructor/components/index/page/contrastoptimizers/',
-            '/contentconstructor/components/index/page/ttbrowserwidth/',
-            '/contentconstructor/components/index/page/ttcontentwidth/',
-            '/contentconstructor/components/index/page/icon/',
-            '/contentconstructor/components/index/page/productgridnoit/',
-            '/contentconstructor/components/index/page/productgriditleft/',
-            '/contentconstructor/components/index/page/productgriditright/',
-            '/contentconstructor/components/index/page/productgriditcenter/',
-            '/contentconstructor/components/index/page/headline/',
-            '/contentconstructor/components/index/page/paragraph/',
-            '/contentconstructor/components/index/page/productfinder/',
-            '/contentconstructor/components/index/page/instagram
-           /'
-        ];
-    }
-
-    /**
-     * @param string $localUrl
-     */
-    private function warmup($localUrl)
-    {
-        $hostname = $this->getDefaultHost();
-
-        foreach ($this->getWarmupPaths() as $path) {
-            $this->queryUrl($localUrl . $path, $hostname);
-        }
-    }
-
-    /**
-     * @return string
-     */
-    private function getCurrentCodeVersion()
-    {
-        return md5(file_get_contents($this->getComposerLockPath()));
-    }
-
-    private function getNodeId()
-    {
-        return gethostname();
     }
 
     /**
@@ -223,6 +86,8 @@ class NodeWarmer
     public function warmNodeUp($localUrl, $force = false)
     {
         $codeVersion = $this->getCurrentCodeVersion();
+        $deployedStaticContentVersion = $this->getDeployedStaticContentVersion();
+
         $this->logger->info(sprintf('Starting warmup for node "%s"', $this->getNodeId()));
 
         if (file_exists($this->getWarmupLogFilePath()) && !$force) {
@@ -248,8 +113,23 @@ class NodeWarmer
             ));
         }
 
-        $this->logger->info(sprintf('Warming up URLs using "%s"', $localUrl));
-        $this->warmup($localUrl);
+        if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
+            try {
+                $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
+
+                foreach ($urls as $url) {
+                    $this->queryUrl($localUrl . $url['path'], $url['host']);
+                }
+            }
+            catch(\Exception $exception) {
+                $this->logger->error(sprintf(
+                    'Unable to warmup merged assets: %s',
+                    $exception->getMessage()
+                ));
+            }
+
+            $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
+        }
 
         $took = $stopwatch->stop('warmup')->getDuration() / 1000.0;
 
@@ -257,4 +137,99 @@ class NodeWarmer
         $this->saveWarmupLog();
     }
 
+    protected function flushCache()
+    {
+        $this->eventManager->dispatch('adminhtml_cache_flush_all');
+        $this->cacheManager->flush($this->cacheManager->getAvailableTypes());
+    }
+
+    /**
+     * @return string
+     */
+    protected function getComposerLockPath()
+    {
+        return $this->directoryList->getRoot() . '/composer.lock';
+    }
+
+    /**
+     * @return string
+     */
+    public function getWarmupLogFilePath()
+    {
+        return $this->directoryList->getPath('pub') . '/' . self::WARM_LOG_FILENAME;
+    }
+
+    protected function saveWarmupLog()
+    {
+        $path = $this->getWarmupLogFilePath();
+        $formatter = new \MageOps\NodeWarmer\Log\LogFormatter();
+
+        file_put_contents(
+            $path,
+            $formatter->formatBatch($this->logger->flush())
+        );
+    }
+
+    /**
+     * @param string $url
+     * @param string $fakeHost
+     */
+    protected function queryUrl($url, $fakeHost = null)
+    {
+        $stopwatch = new \Symfony\Component\Stopwatch\Stopwatch();
+        $stopwatch->start('get');
+
+        $this->logger->info(sprintf('Querying url "%s" with host "%s"', $url, $fakeHost));
+
+        try {
+            $response = $this->http->get($url, [
+                'headers' => [
+                    'Host' => $fakeHost,
+                    'X-Forwarded-Host' => $fakeHost,
+                    'X-Forwarded-Proto' => 'https',
+                ]
+            ]);
+
+            $this->logger->info(sprintf('GET "%s" returned %d %s, took %.2fs',
+                $url,
+                $response->getStatusCode(),
+                $response->getReasonPhrase(),
+                $stopwatch->stop('get')->getDuration() / 1000.0
+            ));
+        } catch (\Exception $exception) {
+            $this->logger->warning(sprintf('Could not get "%s" because: %s',
+                get_class($exception),
+                $exception->getMessage()
+            ));
+        }
+    }
+
+    /**
+     * @return string
+     */
+    protected function getCurrentCodeVersion()
+    {
+        return md5(file_get_contents($this->getComposerLockPath()));
+    }
+
+    /**
+     * @return string
+     */
+    protected function getDeployedStaticContentVersion()
+    {
+        return file_get_contents($this->getDeployedStaticContentVersionPath());
+    }
+
+    /**
+     * @return string
+     */
+    protected function getDeployedStaticContentVersionPath()
+    {
+        return $this->directoryList->getRoot() . '/pub/static/deployed_version.txt';
+    }
+
+    protected function getNodeId()
+    {
+        return gethostname();
+    }
 }
