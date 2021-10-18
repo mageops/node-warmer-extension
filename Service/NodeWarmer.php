@@ -89,6 +89,7 @@ class NodeWarmer
         $deployedStaticContentVersion = $this->getDeployedStaticContentVersion();
 
         $this->logger->info(sprintf('Starting warmup for node "%s"', $this->getNodeId()));
+        $urls = $this->getUrlsToBeWarmedUp();
 
         if (file_exists($this->getWarmupLogFilePath()) && !$force) {
             $this->logger->info('Skipping warmup, already warm...');
@@ -114,33 +115,11 @@ class NodeWarmer
         }
 
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
-            $attempt = 1;
-            $finished = false;
-
-            do {
-                try {
-                    $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
-
-                    foreach ($urls as $url) {
-                        $this->queryUrl($localUrl . $url['path'], $url['host']);
-                    }
-
-                    $finished = true;
+            if(!empty($urls)) {
+                foreach ($urls as $url) {
+                    $this->queryUrl($localUrl . $url['path'], $url['host']);
                 }
-                catch(\Exception $exception) {
-                    $this->logger->error(sprintf(
-                        'Unable to warmup merged assets during attempt %d: %s, %s',
-                        $attempt,
-                        $exception->getMessage(),
-                        $exception->getTraceAsString()
-                    ));
-
-                    sleep(1);
-                }
-
-                $attempt++;
             }
-            while(!$finished && $attempt < 10);
 
             $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
         }
@@ -182,6 +161,31 @@ class NodeWarmer
             $path,
             $formatter->formatBatch($this->logger->flush())
         );
+    }
+
+    protected function getUrlsToBeWarmedUp() {
+        $attempt = 1;
+
+        do {
+            try {
+                $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
+
+                return $urls;
+            }
+            catch(\Exception $exception) {
+                $this->logger->error(sprintf(
+                    'Unable to warmup merged assets during attempt %d: %s, %s',
+                    $attempt,
+                    $exception->getMessage(),
+                    $exception->getTraceAsString()
+                ));
+            }
+
+            $attempt++;
+        }
+        while($attempt < 10);
+
+        return [];
     }
 
     /**
