@@ -54,7 +54,7 @@ class WarmNodeCommand extends \Symfony\Component\Console\Command\Command
         $this->setAreaCode();
 
         $force = $input->getOption('force');
-        $localUrl = $input->getOption('local-url');
+        $localUrl = trim($input->getOption('local-url'), '"');
 
         try {
             @$this->nodeWarmer->warmNodeUp($localUrl, $force);

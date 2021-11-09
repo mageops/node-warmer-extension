@@ -5,25 +5,25 @@ namespace MageOps\NodeWarmer\Model;
 class Config
 {
     const CACHE_CODE_VERSION_PATH = 'node_warmer/cache_code_version';
+    const DEPLOYED_STATIC_CONTENT_VERSION_PATH = 'node_warmer/deployed_static_content_version';
 
     /**
-     * @var \Magento\Framework\App\Config\ScopeConfigInterface
+     * @var \Magento\Config\Model\ResourceModel\Config\Data\CollectionFactory
      */
-    private $scopeConfig;
+    protected $configCollectionFactory;
 
     /**
      * @var \Magento\Framework\App\Config\Storage\WriterInterface
      */
-    private $configWriter;
-
+    protected $configWriter;
 
     public function __construct(
-        \Magento\Framework\App\Config\ScopeConfigInterface $scopeConfig,
+        \Magento\Config\Model\ResourceModel\Config\Data\CollectionFactory $configCollectionFactory,
         \Magento\Framework\App\Config\Storage\WriterInterface $configWriter
     )
     {
-        $this->scopeConfig = $scopeConfig;
         $this->configWriter = $configWriter;
+        $this->configCollectionFactory = $configCollectionFactory;
     }
 
     /**
@@ -31,7 +31,7 @@ class Config
      */
     public function getCacheCodeVersion()
     {
-        return $this->scopeConfig->getValue(self::CACHE_CODE_VERSION_PATH);
+        return $this->getUncachedConfigValue(self::CACHE_CODE_VERSION_PATH);
     }
 
     /**
@@ -40,5 +40,40 @@ class Config
     public function updateCacheCodeVersion($newVersion)
     {
         $this->configWriter->save(self::CACHE_CODE_VERSION_PATH, $newVersion);
+    }
+
+    /**
+     * @return bool
+     */
+    public function getDeployedStaticContentVersion()
+    {
+        return $this->getUncachedConfigValue(self::DEPLOYED_STATIC_CONTENT_VERSION_PATH);
+    }
+
+    /**
+     * @param string $newVersion
+     */
+    public function updateDeployedStaticContentVersion($newVersion)
+    {
+        $this->configWriter->save(self::DEPLOYED_STATIC_CONTENT_VERSION_PATH, $newVersion);
+    }
+
+    /**
+     * Standard ScopeConfig can return value cached in redis
+     * For this module we always need value directly from database
+     * @param $path
+     * @return string|null
+     */
+    protected function getUncachedConfigValue($path): ?string {
+        $configCollection = $this->configCollectionFactory->create();
+        $configCollection->addFieldToFilter('path', ['eq' => $path]);
+
+        $config =  $configCollection->getFirstItem();
+
+        if($config === null) {
+            return null;
+        }
+
+        return $config->getValue();
     }
 }
