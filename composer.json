@@ -5,7 +5,7 @@
   "homepage": "https://creativestyle.de",
   "license": "OSL-3.0",
   "require": {
-    "php": ">=7.0.0"
+    "symfony/stopwatch": "^5.0"
   },
   "autoload": {
     "files": [
