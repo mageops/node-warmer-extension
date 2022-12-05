@@ -86,7 +86,6 @@ class MergedAssetsWarmupUrlsProvider
             )
             ->setPageSize(1);
 
-        $productCollection->getSelect()->orderRand();
         $product = $productCollection->getFirstItem();
 
         return sprintf(

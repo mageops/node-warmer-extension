@@ -89,7 +89,6 @@ class NodeWarmer
         $deployedStaticContentVersion = $this->getDeployedStaticContentVersion();
 
         $this->logger->info(sprintf('Starting warmup for node "%s"', $this->getNodeId()));
-        $urls = $this->getUrlsToBeWarmedUp();
 
         if (file_exists($this->getWarmupLogFilePath()) && !$force) {
             $this->logger->info('Skipping warmup, already warm...');
@@ -115,6 +114,8 @@ class NodeWarmer
         }
 
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
+            $urls = $this->getUrlsToBeWarmedUp();
+
             if(!empty($urls)) {
                 foreach ($urls as $url) {
                     $this->queryUrl($localUrl . $url['path'], $url['host']);
