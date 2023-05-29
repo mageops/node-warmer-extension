@@ -59,12 +59,12 @@ class WarmNodeCommand extends \Symfony\Component\Console\Command\Command
         try {
             @$this->nodeWarmer->warmNodeUp($localUrl, $force);
             $output->writeln(sprintf('Done, output saved to "%s"', $this->nodeWarmer->getWarmupLogFilePath()));
+            return \Magento\Framework\Console\Cli::RETURN_SUCCESS;
         } catch (\Exception $exception) {
             $message = sprintf('Warmup did not complete, generated WARMUP file anyway: %s', (string)$exception);
-
             $output->writeln($message);
-
             file_put_contents($this->nodeWarmer->getWarmupLogFilePath(), $message);
+            return \Magento\Framework\Console\Cli::RETURN_FAILURE;
         }
     }
 }
