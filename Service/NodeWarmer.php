@@ -141,7 +141,8 @@ class NodeWarmer
                                 ]
                             ),
                             'url' => $uri,
-                            'host' => $url['host']
+                            'host' => $url['host'],
+                            'path' => $url['path']
                         ];
                     }
 
@@ -154,7 +155,10 @@ class NodeWarmer
                                 $this->warmupRequestBatch -= 1;
                             }
                             // Retry failed requests
-                            $urls[] = $asyncOperation['url'];
+                            $urls[] = [
+                                'host' => $asyncOperation['host'],
+                                'path' => $asyncOperation['path']
+                            ];
                         }
                     }
                 }
