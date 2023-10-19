@@ -117,40 +117,32 @@ class NodeWarmer
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
             $urls = $this->getUrlsToBeWarmedUp();
 
-            if(!empty($urls)) {
-                $asyncOperations = [];
-                $i = 0;
+            if (!empty($urls)) {
+                foreach (array_chunk($urls, self::WARMUP_REQUEST_BATCH) as $urlBatch) {
+                    $asyncOperations = [];
 
-                foreach ($urls as $url) {
-                    $uri = $localUrl . $url['path'];
-                    $asyncOperations[] = [
-                        'promise' => $this->http->getAsync(
-                            $uri,
-                            [
-                                'headers' => [
-                                    'Host' => $url['host'],
-                                    'X-Forwarded-Host' => $url['host'],
-                                    'X-Forwarded-Proto' => 'https',
-                                    'User-Agent' => 'Node Warmer'
+                    foreach ($urlBatch as $url) {
+                        $uri = $localUrl . $url['path'];
+                        $asyncOperations[] = [
+                            'promise' => $this->http->getAsync(
+                                $uri,
+                                [
+                                    'headers' => [
+                                        'Host' => $url['host'],
+                                        'X-Forwarded-Host' => $url['host'],
+                                        'X-Forwarded-Proto' => 'https',
+                                        'User-Agent' => 'Node Warmer'
+                                    ]
                                 ]
-                            ]
-                        ),
-                        'url' => $uri,
-                        'host' => $url['host']
-                    ];
-                    $i++;
-
-                    if ($i % self::WARMUP_REQUEST_BATCH == 0) {
-                        foreach ($asyncOperations as $asyncOperation) {
-                            $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
-                        }
-
-                        $asyncOperations = [];
+                            ),
+                            'url' => $uri,
+                            'host' => $url['host']
+                        ];
                     }
-                }
 
-                foreach ($asyncOperations as $asyncOperation) {
-                    $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                    foreach ($asyncOperations as $asyncOperation) {
+                        $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                    }
                 }
             }
 
