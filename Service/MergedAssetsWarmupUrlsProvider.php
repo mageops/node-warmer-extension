@@ -54,9 +54,7 @@ class MergedAssetsWarmupUrlsProvider
         $urls = [];
 
         foreach ($this->storeManager->getStores() as $store) {
-            $baseUrl = $store->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB);
-
-            $urls[] = $baseUrl;
+            $urls[] = $store->getBaseUrl();
             $urls[] = $store->getUrl('customer/account/login');
             $urls[] = $store->getUrl('customer/account/create');
             $urls[] = $store->getUrl('customer/account/forgotpassword');

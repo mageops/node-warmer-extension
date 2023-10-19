@@ -6,6 +6,12 @@ class NodeWarmer
 {
     const WARM_LOG_FILENAME = 'WARMUP';
     const WARMUP_TIMEOUT = 60;
+    const WARMUP_REQUEST_BATCH = 32;
+
+    /**
+     * @var int
+     */
+    protected $warmupRequestBatch = self::WARMUP_REQUEST_BATCH;
 
     /**
      * @var MergedAssetsWarmupUrlsProvider
@@ -116,9 +122,45 @@ class NodeWarmer
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
             $urls = $this->getUrlsToBeWarmedUp();
 
-            if(!empty($urls)) {
-                foreach ($urls as $url) {
-                    $this->queryUrl($localUrl . $url['path'], $url['host']);
+            if (!empty($urls)) {
+                foreach (array_chunk($urls, $this->warmupRequestBatch) as $urlBatch) {
+                    $asyncOperations = [];
+
+                    foreach ($urlBatch as $url) {
+                        $uri = $localUrl . $url['path'];
+                        $asyncOperations[] = [
+                            'promise' => $this->http->getAsync(
+                                $uri,
+                                [
+                                    'headers' => [
+                                        'Host' => $url['host'],
+                                        'X-Forwarded-Host' => $url['host'],
+                                        'X-Forwarded-Proto' => 'https',
+                                        'User-Agent' => 'Node Warmer'
+                                    ]
+                                ]
+                            ),
+                            'url' => $uri,
+                            'host' => $url['host'],
+                            'path' => $url['path']
+                        ];
+                    }
+
+                    foreach ($asyncOperations as $asyncOperation) {
+                        try {
+                            $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                        }catch(\Exception $exception) {
+                            // Reduce parallel requests if we get a eg. 503
+                            if ($this->warmupRequestBatch > 1) {
+                                $this->warmupRequestBatch -= 1;
+                            }
+                            // Retry failed requests
+                            $urls[] = [
+                                'host' => $asyncOperation['host'],
+                                'path' => $asyncOperation['path']
+                            ];
+                        }
+                    }
                 }
             }
 
@@ -169,9 +211,7 @@ class NodeWarmer
 
         do {
             try {
-                $urls = $this->mergedAssetsWarmupUrlsProvider->getUrls();
-
-                return $urls;
+                return $this->mergedAssetsWarmupUrlsProvider->getUrls();
             }
             catch(\Exception $exception) {
                 $this->logger->error(sprintf(
@@ -190,36 +230,30 @@ class NodeWarmer
     }
 
     /**
+     * @param \GuzzleHttp\Promise\PromiseInterface $promise
      * @param string $url
-     * @param string $fakeHost
+     * @param string $host
+     * @throws \Exception
+     * @return void
      */
-    protected function queryUrl($url, $fakeHost = null)
+    protected function queryUrl(\GuzzleHttp\Promise\PromiseInterface $promise, string $url, string $host)
     {
-        $stopwatch = new \Symfony\Component\Stopwatch\Stopwatch();
-        $stopwatch->start('get');
-
-        $this->logger->info(sprintf('Querying url "%s" with host "%s"', $url, $fakeHost));
+        $this->logger->info(sprintf('Querying url "%s" with host "%s"', $url, $host));
 
         try {
-            $response = $this->http->get($url, [
-                'headers' => [
-                    'Host' => $fakeHost,
-                    'X-Forwarded-Host' => $fakeHost,
-                    'X-Forwarded-Proto' => 'https',
-                ]
-            ]);
-
-            $this->logger->info(sprintf('GET "%s" returned %d %s, took %.2fs',
+            /** @var \GuzzleHttp\Psr7\Response $response */
+            $response = $promise->wait();
+            $this->logger->info(sprintf('GET "%s" returned %d %s',
                 $url,
                 $response->getStatusCode(),
-                $response->getReasonPhrase(),
-                $stopwatch->stop('get')->getDuration() / 1000.0
+                $response->getReasonPhrase()
             ));
         } catch (\Exception $exception) {
             $this->logger->warning(sprintf('Could not get "%s" because: %s',
                 get_class($exception),
                 $exception->getMessage()
             ));
+            throw $exception;
         }
     }
 
