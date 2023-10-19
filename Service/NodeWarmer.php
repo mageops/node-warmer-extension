@@ -6,6 +6,7 @@ class NodeWarmer
 {
     const WARM_LOG_FILENAME = 'WARMUP';
     const WARMUP_TIMEOUT = 60;
+    const WARMUP_REQUEST_BATCH = 10;
 
     /**
      * @var MergedAssetsWarmupUrlsProvider
@@ -118,6 +119,7 @@ class NodeWarmer
 
             if(!empty($urls)) {
                 $asyncOperations = [];
+                $i = 0;
 
                 foreach ($urls as $url) {
                     $uri = $localUrl . $url['path'];
@@ -136,6 +138,15 @@ class NodeWarmer
                         'url' => $uri,
                         'host' => $url['host']
                     ];
+                    $i++;
+
+                    if ($i % self::WARMUP_REQUEST_BATCH == 0) {
+                        foreach ($asyncOperations as $asyncOperation) {
+                            $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                        }
+
+                        $asyncOperations = [];
+                    }
                 }
 
                 foreach ($asyncOperations as $asyncOperation) {
