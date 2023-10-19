@@ -6,7 +6,12 @@ class NodeWarmer
 {
     const WARM_LOG_FILENAME = 'WARMUP';
     const WARMUP_TIMEOUT = 60;
-    const WARMUP_REQUEST_BATCH = 10;
+    const WARMUP_REQUEST_BATCH = 32;
+
+    /**
+     * @var int
+     */
+    protected $warmupRequestBatch = self::WARMUP_REQUEST_BATCH;
 
     /**
      * @var MergedAssetsWarmupUrlsProvider
@@ -118,7 +123,7 @@ class NodeWarmer
             $urls = $this->getUrlsToBeWarmedUp();
 
             if (!empty($urls)) {
-                foreach (array_chunk($urls, self::WARMUP_REQUEST_BATCH) as $urlBatch) {
+                foreach (array_chunk($urls, $this->warmupRequestBatch) as $urlBatch) {
                     $asyncOperations = [];
 
                     foreach ($urlBatch as $url) {
@@ -141,7 +146,16 @@ class NodeWarmer
                     }
 
                     foreach ($asyncOperations as $asyncOperation) {
-                        $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                        try {
+                            $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                        }catch(\Exception $exception) {
+                            // Reduce parallel requests if we get a eg. 503
+                            if ($this->warmupRequestBatch > 1) {
+                                $this->warmupRequestBatch -= 1;
+                            }
+                            // Retry failed requests
+                            $urls[] = $asyncOperation['url'];
+                        }
                     }
                 }
             }
@@ -215,6 +229,7 @@ class NodeWarmer
      * @param \GuzzleHttp\Promise\PromiseInterface $promise
      * @param string $url
      * @param string $host
+     * @throws \Exception
      * @return void
      */
     protected function queryUrl(\GuzzleHttp\Promise\PromiseInterface $promise, string $url, string $host)
@@ -234,6 +249,7 @@ class NodeWarmer
                 get_class($exception),
                 $exception->getMessage()
             ));
+            throw $exception;
         }
     }
 
