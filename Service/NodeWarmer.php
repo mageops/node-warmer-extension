@@ -6,7 +6,7 @@ class NodeWarmer
 {
     const WARM_LOG_FILENAME = 'WARMUP';
     const WARMUP_TIMEOUT = 60;
-    const WARMUP_REQUEST_BATCH = 32;
+    const WARMUP_REQUEST_BATCH = 5;
 
     /**
      * @var int
