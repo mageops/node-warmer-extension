@@ -1,31 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOps\NodeWarmer\Log;
 
 class CapturingLoggerDecorator extends \Psr\Log\AbstractLogger implements \Psr\Log\LoggerInterface
 {
-    /**
-     * @var \Psr\Log\LoggerInterface
-     */
-    private $upstreamLogger;
-
-    /**
-     * @var array
-     */
-    private $buffer = [];
-
-    /**
-     * @param \Psr\Log\LoggerInterface $upstreamLogger
-     */
-    public function __construct(\Psr\Log\LoggerInterface $upstreamLogger)
-    {
-        $this->upstreamLogger = $upstreamLogger;
+    protected array $buffer = [];
+    public function __construct(
+        protected \Psr\Log\LoggerInterface $upstreamLogger
+    ) {
     }
 
     /**
      * @return array
      */
-    public function flush()
+    public function flush(): array
     {
         $buffer = $this->buffer;
         $this->buffer = [];
@@ -33,12 +23,7 @@ class CapturingLoggerDecorator extends \Psr\Log\AbstractLogger implements \Psr\L
         return $buffer;
     }
 
-    /**
-     * @param mixed $level
-     * @param string|\Stringable $message
-     * @param array $context
-     */
-    public function log($level, string|\Stringable $message, array $context = []): void
+    public function log($level, $message, array $context = []): void //phpcs:ignore
     {
         $this->upstreamLogger->log($level, $message, $context);
         $this->buffer[] = [time(), $level, $message];

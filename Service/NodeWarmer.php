@@ -1,83 +1,33 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOps\NodeWarmer\Service;
 
 class NodeWarmer
 {
-    const WARM_LOG_FILENAME = 'WARMUP';
-    const WARMUP_TIMEOUT = 60;
-    const WARMUP_REQUEST_BATCH = 32;
+    public const WARM_LOG_FILENAME = 'WARMUP';
+    public const WARMUP_TIMEOUT = 60;
+    public const WARMUP_REQUEST_BATCH = 32;
 
-    /**
-     * @var int
-     */
-    protected $warmupRequestBatch = self::WARMUP_REQUEST_BATCH;
-
-    /**
-     * @var MergedAssetsWarmupUrlsProvider
-     */
-    protected $mergedAssetsWarmupUrlsProvider;
-
-    /**
-     * @var \MageOps\NodeWarmer\Model\Config
-     */
-    protected $config;
-
-    /**
-     * @var \Magento\Framework\Event\ManagerInterface
-     */
-    protected $eventManager;
-
-    /**
-     * @var \Magento\Framework\App\Cache\Manager
-     */
-    protected $cacheManager;
-
-    /**
-     * @var \Magento\Framework\App\Filesystem\DirectoryList
-     */
-    protected $directoryList;
-
-    /**
-     * @var \Magento\Store\Model\StoreManagerInterface
-     */
-    protected $storeManager;
-
-    /**
-     * @var \Magento\Framework\UrlInterface
-     */
-    protected $urlGenerator;
-
-    /**
-     * @var \Psr\Log\LoggerInterface
-     */
-    protected $logger;
-
-    /**
-     * @var \GuzzleHttp\Client
-     */
-    protected $http;
+    protected int $warmupRequestBatch = self::WARMUP_REQUEST_BATCH;
+    protected ?\GuzzleHttp\Client $http;
+    protected ?\MageOps\NodeWarmer\Log\CapturingLoggerDecorator $logger;
 
     public function __construct(
-        \MageOps\NodeWarmer\Model\Config $config,
-        \Magento\Framework\Event\ManagerInterface $eventManager,
-        \Magento\Framework\App\Cache\Manager $cacheManager,
-        \Magento\Framework\App\Filesystem\DirectoryList $directoryList,
-        \Magento\Store\Model\StoreManagerInterface $storeManager,
-        \Magento\Framework\UrlInterface $urlGenerator,
-        MergedAssetsWarmupUrlsProvider $mergedAssetsWarmupUrlsProvider,
-        \Psr\Log\LoggerInterface $logger
-    )
-    {
-        $this->config = $config;
-        $this->eventManager = $eventManager;
-        $this->cacheManager = $cacheManager;
-        $this->directoryList = $directoryList;
-        $this->storeManager = $storeManager;
-        $this->urlGenerator = $urlGenerator;
-        $this->mergedAssetsWarmupUrlsProvider = $mergedAssetsWarmupUrlsProvider;
-        $this->logger = new \MageOps\NodeWarmer\Log\CapturingLoggerDecorator($logger);
-
+        protected \MageOps\NodeWarmer\Model\Config $config,
+        protected \Magento\Framework\Event\ManagerInterface $eventManager,
+        protected \Magento\Framework\App\Cache\Manager $cacheManager,
+        protected \Magento\Framework\App\Filesystem\DirectoryList $directoryList,
+        protected \Magento\Store\Model\StoreManagerInterface $storeManager,
+        protected \Magento\Framework\UrlInterface $urlGenerator,
+        protected MergedAssetsWarmupUrlsProvider $mergedAssetsWarmupUrlsProvider,
+        protected \Psr\Log\LoggerInterface $psrLogger,
+        protected \Magento\Framework\Filesystem\DriverInterface $filesystemDriver,
+        protected \Symfony\Component\Stopwatch\StopwatchFactory $stopwatchFactory,
+        protected \MageOps\NodeWarmer\Log\LogFormatter $logFormatter,
+    ) {
+        $this->logger = new \MageOps\NodeWarmer\Log\CapturingLoggerDecorator($psrLogger);
         $this->http = new \GuzzleHttp\Client([
             'timeout' => self::WARMUP_TIMEOUT,
             'allow_redirects' => true,
@@ -85,23 +35,19 @@ class NodeWarmer
         ]);
     }
 
-    /**
-     * @param bool $force
-     * @param string $localUrl
-     */
-    public function warmNodeUp($localUrl, $force = false)
+    public function warmNodeUp(string $localUrl, bool $force = false): void
     {
         $codeVersion = $this->getCurrentCodeVersion();
         $deployedStaticContentVersion = $this->getDeployedStaticContentVersion();
 
         $this->logger->info(sprintf('Starting warmup for node "%s"', $this->getNodeId()));
 
-        if (file_exists($this->getWarmupLogFilePath()) && !$force) {
+        if ($this->filesystemDriver->isExists($this->getWarmupLogFilePath()) && !$force) {
             $this->logger->info('Skipping warmup, already warm...');
             return;
         }
 
-        $stopwatch = new \Symfony\Component\Stopwatch\Stopwatch();
+        $stopwatch = $this->stopwatchFactory->create();
         $stopwatch->start('warmup');
 
         if ($this->config->getCacheCodeVersion() !== $codeVersion) {
@@ -119,53 +65,57 @@ class NodeWarmer
             ));
         }
 
-        if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
-            $urls = $this->getUrlsToBeWarmedUp();
+        if ($this->config->getDeployedStaticContentVersion() == $deployedStaticContentVersion) {
+            $took = $stopwatch->stop('warmup')->getDuration() / 1000.0;
 
-            if (!empty($urls)) {
-                foreach (array_chunk($urls, $this->warmupRequestBatch) as $urlBatch) {
-                    $asyncOperations = [];
+            $this->logger->info(sprintf('All done, took %.2fs', $took));
+            $this->saveWarmupLog();
+            return;
+        }
 
-                    foreach ($urlBatch as $url) {
-                        $uri = $localUrl . $url['path'];
-                        $asyncOperations[] = [
-                            'promise' => $this->http->getAsync(
-                                $uri,
-                                [
-                                    'headers' => [
-                                        'Host' => $url['host'],
-                                        'X-Forwarded-Host' => $url['host'],
-                                        'X-Forwarded-Proto' => 'https',
-                                        'User-Agent' => 'Node Warmer'
-                                    ]
+        $urls = $this->getUrlsToBeWarmedUp();
+
+        if (!empty($urls)) {
+            foreach (array_chunk($urls, $this->warmupRequestBatch) as $urlBatch) {
+                $asyncOperations = [];
+
+                foreach ($urlBatch as $url) {
+                    $uri = $localUrl . $url['path'];
+                    $asyncOperations[] = [
+                        'promise' => $this->http->getAsync(
+                            $uri,
+                            [
+                                'headers' => [
+                                    'Host' => $url['host'],
+                                    'X-Forwarded-Host' => $url['host'],
+                                    'X-Forwarded-Proto' => 'https',
+                                    'User-Agent' => 'Node Warmer'
                                 ]
-                            ),
-                            'url' => $uri,
-                            'host' => $url['host'],
-                            'path' => $url['path']
-                        ];
-                    }
+                            ]
+                        ),
+                        'url' => $uri,
+                        'host' => $url['host'],
+                        'path' => $url['path']
+                    ];
+                }
 
-                    foreach ($asyncOperations as $asyncOperation) {
-                        try {
-                            $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
-                        }catch(\Exception $exception) {
-                            // Reduce parallel requests if we get a eg. 503
-                            if ($this->warmupRequestBatch > 1) {
-                                $this->warmupRequestBatch -= 1;
-                            }
-                            // Retry failed requests
-                            $urls[] = [
-                                'host' => $asyncOperation['host'],
-                                'path' => $asyncOperation['path']
-                            ];
-                        }
+                foreach ($asyncOperations as $asyncOperation) {
+                    try {
+                        $this->queryUrl($asyncOperation['promise'], $asyncOperation['url'], $asyncOperation['host']);
+                    }catch(\Exception $exception) {
+                        // Reduce parallel requests if we get a eg. 503
+                        $this->warmupRequestBatch = max(1, $this->warmupRequestBatch - 1);
+                        // Retry failed requests
+                        $urls[] = [
+                            'host' => $asyncOperation['host'],
+                            'path' => $asyncOperation['path']
+                        ];
                     }
                 }
             }
-
-            $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
         }
+
+        $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
 
         $took = $stopwatch->stop('warmup')->getDuration() / 1000.0;
 
@@ -173,7 +123,7 @@ class NodeWarmer
         $this->saveWarmupLog();
     }
 
-    protected function flushCache()
+    protected function flushCache(): void
     {
         $this->eventManager->dispatch('adminhtml_cache_flush_all');
         $this->cacheManager->flush($this->cacheManager->getAvailableTypes());
@@ -182,31 +132,28 @@ class NodeWarmer
     /**
      * @return string
      */
-    protected function getComposerLockPath()
+    protected function getComposerLockPath(): string
     {
         return $this->directoryList->getRoot() . '/composer.lock';
     }
 
-    /**
-     * @return string
-     */
-    public function getWarmupLogFilePath()
+    public function getWarmupLogFilePath(): string
     {
-        return $this->directoryList->getPath('pub') . '/' . self::WARM_LOG_FILENAME;
+        return $this->directoryList->getPath(\Magento\Framework\App\Filesystem\DirectoryList::PUB) . \DIRECTORY_SEPARATOR . self::WARM_LOG_FILENAME;
     }
 
-    protected function saveWarmupLog()
+    protected function saveWarmupLog(): void
     {
         $path = $this->getWarmupLogFilePath();
-        $formatter = new \MageOps\NodeWarmer\Log\LogFormatter();
+        $content = $this->logFormatter->formatBatch($this->logger->flush());
 
-        file_put_contents(
-            $path,
-            $formatter->formatBatch($this->logger->flush())
-        );
+        $handle = $this->filesystemDriver->fileOpen($path, 'w');
+        $this->filesystemDriver->fileWrite($handle, $content);
+        $this->filesystemDriver->fileClose($handle);
     }
 
-    protected function getUrlsToBeWarmedUp() {
+    protected function getUrlsToBeWarmedUp(): array
+    {
         $attempt = 1;
 
         do {
@@ -223,20 +170,12 @@ class NodeWarmer
             }
 
             $attempt++;
-        }
-        while($attempt < 10);
+        } while ($attempt < 10);
 
         return [];
     }
 
-    /**
-     * @param \GuzzleHttp\Promise\PromiseInterface $promise
-     * @param string $url
-     * @param string $host
-     * @throws \Exception
-     * @return void
-     */
-    protected function queryUrl(\GuzzleHttp\Promise\PromiseInterface $promise, string $url, string $host)
+    protected function queryUrl(\GuzzleHttp\Promise\PromiseInterface $promise, string $url, string $host): void
     {
         $this->logger->info(sprintf('Querying url "%s" with host "%s"', $url, $host));
 
@@ -257,32 +196,32 @@ class NodeWarmer
         }
     }
 
-    /**
-     * @return string
-     */
-    protected function getCurrentCodeVersion()
+    protected function getCurrentCodeVersion(): string
     {
-        return md5(file_get_contents($this->getComposerLockPath()));
+        try {
+            $composerLockContent = $this->filesystemDriver->fileGetContents($this->getComposerLockPath());
+            return md5($composerLockContent); // phpcs:ignore
+        } catch (\Magento\Framework\Exception\FileSystemException $e) {
+            return '';
+        }
     }
 
-    /**
-     * @return string
-     */
-    protected function getDeployedStaticContentVersion()
+    protected function getDeployedStaticContentVersion(): string
     {
-        return file_get_contents($this->getDeployedStaticContentVersionPath());
+        try {
+            return $this->filesystemDriver->fileGetContents($this->getDeployedStaticContentVersionPath());
+        } catch (\Magento\Framework\Exception\FileSystemException $e) {
+            return '';
+        }
     }
 
-    /**
-     * @return string
-     */
-    protected function getDeployedStaticContentVersionPath()
+    protected function getDeployedStaticContentVersionPath(): string
     {
-        return $this->directoryList->getRoot() . '/pub/static/deployed_version.txt';
+        return $this->directoryList->getPath(\Magento\Framework\App\Filesystem\DirectoryList::STATIC_VIEW) . \DIRECTORY_SEPARATOR . 'deployed_version.txt';
     }
 
-    protected function getNodeId()
+    protected function getNodeId(): string
     {
-        return gethostname();
+        return (string)gethostname();
     }
 }

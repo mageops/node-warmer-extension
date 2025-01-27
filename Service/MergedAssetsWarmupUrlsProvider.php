@@ -1,120 +1,66 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOps\NodeWarmer\Service;
 
 class MergedAssetsWarmupUrlsProvider
 {
-    const ALLOWED_VISIBILITIES = [
-        \Magento\Catalog\Model\Product\Visibility::VISIBILITY_IN_CATALOG,
-        \Magento\Catalog\Model\Product\Visibility::VISIBILITY_BOTH,
-    ];
-
-    /**
-     * @var \Magento\Store\Model\StoreManagerInterface
-     */
-    protected $storeManager;
-
-    /**
-     * @var \Magento\Catalog\Model\ResourceModel\Product\CollectionFactory
-     */
-    protected $productCollectionFactory;
-
-    /**
-     * @var \Magento\Catalog\Model\ResourceModel\Category\Collection
-     */
-    protected $categoryCollectionFactory;
-
-    /**
-     * @var \Magento\UrlRewrite\Model\UrlFinderInterface
-     */
-    protected $urlFinder;
-
-    /**
-     * @var \Magento\Framework\UrlInterface
-     */
-    protected $url;
-
     public function __construct(
-        \Magento\Store\Model\StoreManagerInterface $storeManager,
-        \Magento\Catalog\Model\ResourceModel\Product\CollectionFactory $productCollectionFactory,
-        \Magento\Catalog\Model\ResourceModel\Category\CollectionFactory $categoryCollectionFactory,
-        \Magento\UrlRewrite\Model\UrlFinderInterface $urlFinder,
-        \Magento\Framework\UrlInterface $url
-    )
-    {
-        $this->storeManager = $storeManager;
-        $this->productCollectionFactory = $productCollectionFactory;
-        $this->categoryCollectionFactory = $categoryCollectionFactory;
-        $this->urlFinder = $urlFinder;
-        $this->url = $url;
+        protected \Magento\Framework\View\LayoutInterfaceFactory $layoutFactory,
+        protected \Magento\Framework\View\Page\ConfigFactory $pageConfigFactory,
+        protected \Magento\Framework\View\DesignInterface $design,
+        protected \Magento\Framework\View\Asset\MergeService $mergeService,
+        protected \Magento\Store\Model\StoreManagerInterface $storeManager,
+        protected \Magento\Store\Model\App\Emulation $emulation,
+        protected array $layoutHandles
+    ) {
     }
 
-    public function getUrls()
+    public function getUrls(): array
     {
-        $urls = [];
-
+        $staticStoreUrls = [];
         foreach ($this->storeManager->getStores() as $store) {
-            $urls[] = $store->getBaseUrl();
-            $urls[] = $store->getUrl('customer/account/login');
-            $urls[] = $store->getUrl('customer/account/create');
-            $urls[] = $store->getUrl('customer/account/forgotpassword');
-            $urls[] = $store->getUrl('checkout/cart');
-            $urls[] = $store->getUrl('catalogsearch/result', ['_query' => ['q' => 'test']]);
-            $urls[] = $this->getProductUrl($store);
-            $urls[] = $this->getCategoryUrl($store);
+            $staticStoreUrls[] = $this->getAssetsUrls($store);
         }
-
-        $urls = array_map([$this, 'extractHostAndPath'], $urls);
+        $staticStoreUrls = array_unique(array_merge(...$staticStoreUrls));
+        $urls = array_map([$this, 'extractHostAndPath'], $staticStoreUrls);
 
         return $urls;
     }
 
-    public function getProductUrl($store)
+    protected function getAssetUrlsByContentType(string $contentType): array
     {
-        $productCollection = $this->productCollectionFactory->create();
+        $group = $this->pageConfigFactory->create()->getAssetCollection()->getGroupByContentType($contentType);
+        $assets = $this->mergeService->getMergedAssets($group->getAll(), $contentType);
 
-        $productCollection
-            ->addFieldToFilter(
-                'status',
-                \Magento\Catalog\Model\Product\Attribute\Source\Status::STATUS_ENABLED
-            )
-            ->addFieldToFilter(
-                'visibility',
-                self::ALLOWED_VISIBILITIES
-            )
-            ->setPageSize(1);
+        $urls = [];
+        foreach ($assets as $asset) {
+            $urls[] = $asset->getUrl();
+        }
 
-        $product = $productCollection->getFirstItem();
-
-        return sprintf(
-            '%scatalog/product/view/id/%d',
-            $store->getBaseUrl(),
-            $product->getId()
-        );
+        return $urls;
     }
 
-    public function getCategoryUrl($store)
+    protected function getAssetsUrls(\Magento\Store\Api\Data\StoreInterface $store): array
     {
-        $categoryCollection = $this->categoryCollectionFactory->create();
-
-        $categoryCollection
-            ->addFieldToFilter('is_active', 1)
-            ->addAttributeToSelect('*')
-            ->setPageSize(1);
-        $categoryCollection->getSelect()->orderRand();
-
-        $category = $categoryCollection->getFirstItem();
-
-        return sprintf(
-            '%scatalog/category/view/id/%d',
-            $store->getBaseUrl(),
-            $category->getId()
+        $this->emulation->startEnvironmentEmulation($store->getId());
+        $layout = $this->layoutFactory->create();
+        $layout->getUpdate()->load($this->layoutHandles);
+        $layout->generateXml();
+        $layout->generateElements();
+        $assets = array_merge(
+            $this->getAssetUrlsByContentType(\Magento\Framework\View\Design\Theme\Customization\File\Js::CONTENT_TYPE),
+            $this->getAssetUrlsByContentType(\Magento\Framework\View\Design\Theme\Customization\File\Css::CONTENT_TYPE)
         );
+        $this->emulation->stopEnvironmentEmulation();
+
+        return $assets;
     }
 
-    protected function extractHostAndPath($url)
+    protected function extractHostAndPath(string $url): array
     {
-        $urlParts = parse_url($url);
+        $urlParts = parse_url($url); // phpcs:ignore Magento2.Functions.DiscouragedFunction
 
         $path = $urlParts['path'];
 

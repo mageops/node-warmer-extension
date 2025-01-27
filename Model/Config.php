@@ -1,35 +1,24 @@
 <?php
 
+declare(strict_types=1);
+
 namespace MageOps\NodeWarmer\Model;
 
 class Config
 {
-    const CACHE_CODE_VERSION_PATH = 'node_warmer/cache_code_version';
-    const DEPLOYED_STATIC_CONTENT_VERSION_PATH = 'node_warmer/deployed_static_content_version';
-
-    /**
-     * @var \Magento\Config\Model\ResourceModel\Config\Data\CollectionFactory
-     */
-    protected $configCollectionFactory;
-
-    /**
-     * @var \Magento\Framework\App\Config\Storage\WriterInterface
-     */
-    protected $configWriter;
+    public const CACHE_CODE_VERSION_PATH = 'node_warmer/cache_code_version';
+    public const DEPLOYED_STATIC_CONTENT_VERSION_PATH = 'node_warmer/deployed_static_content_version';
 
     public function __construct(
-        \Magento\Config\Model\ResourceModel\Config\Data\CollectionFactory $configCollectionFactory,
-        \Magento\Framework\App\Config\Storage\WriterInterface $configWriter
-    )
-    {
-        $this->configWriter = $configWriter;
-        $this->configCollectionFactory = $configCollectionFactory;
+        protected \Magento\Config\Model\ResourceModel\Config\Data\CollectionFactory $configCollectionFactory,
+        protected \Magento\Framework\App\Config\Storage\WriterInterface $configWriter
+    ) {
     }
 
     /**
      * @return bool
      */
-    public function getCacheCodeVersion()
+    public function getCacheCodeVersion(): bool
     {
         return $this->getUncachedConfigValue(self::CACHE_CODE_VERSION_PATH);
     }
@@ -37,23 +26,17 @@ class Config
     /**
      * @param string $newVersion
      */
-    public function updateCacheCodeVersion($newVersion)
+    public function updateCacheCodeVersion(string $newVersion): void
     {
         $this->configWriter->save(self::CACHE_CODE_VERSION_PATH, $newVersion);
     }
 
-    /**
-     * @return bool
-     */
-    public function getDeployedStaticContentVersion()
+    public function getDeployedStaticContentVersion(): ?string
     {
         return $this->getUncachedConfigValue(self::DEPLOYED_STATIC_CONTENT_VERSION_PATH);
     }
 
-    /**
-     * @param string $newVersion
-     */
-    public function updateDeployedStaticContentVersion($newVersion)
+    public function updateDeployedStaticContentVersion(string $newVersion): void
     {
         $this->configWriter->save(self::DEPLOYED_STATIC_CONTENT_VERSION_PATH, $newVersion);
     }
@@ -61,16 +44,14 @@ class Config
     /**
      * Standard ScopeConfig can return value cached in redis
      * For this module we always need value directly from database
-     * @param $path
-     * @return string|null
      */
-    protected function getUncachedConfigValue($path): ?string {
+    protected function getUncachedConfigValue(string $path): ?string {
         $configCollection = $this->configCollectionFactory->create();
         $configCollection->addFieldToFilter('path', ['eq' => $path]);
 
         $config =  $configCollection->getFirstItem();
 
-        if($config === null) {
+        if ($config === null) {
             return null;
         }
 
