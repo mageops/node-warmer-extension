@@ -38,7 +38,7 @@ class NodeWarmer
     public function warmNodeUp(string $localUrl, bool $force = false): void
     {
         $codeVersion = $this->getCurrentCodeVersion();
-        $deployedStaticContentVersion = $this->getDeployedStaticContentVersion() . uniqid();
+        $deployedStaticContentVersion = $this->getDeployedStaticContentVersion();
 
         $this->logger->info(sprintf('Starting warmup for node "%s"', $this->getNodeId()));
 
