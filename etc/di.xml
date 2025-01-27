@@ -1,9 +1,26 @@
 <?xml version="1.0"?>
-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
     <type name="Magento\Framework\Console\CommandListInterface">
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="node_warmer_warm_node" xsi:type="object">\MageOps\NodeWarmer\Console\Command\WarmNodeCommand</item>
+            </argument>
+        </arguments>
+    </type>
+    <type name="MageOps\NodeWarmer\Service\MergedAssetsWarmupUrlsProvider">
+        <arguments>
+            <argument name="layoutHandles" xsi:type="array">
+                <item name="default" xsi:type="string">default</item>
+                <item name="cms_index_index" xsi:type="string">cms_index_index</item>
+                <item name="checkout_index_index" xsi:type="string">checkout_index_index</item>
+                <item name="catalog_product_view" xsi:type="string">catalog_product_view</item>
+                <item name="catalog_category_view" xsi:type="string">catalog_category_view</item>
+                <item name="checkout_cart_index" xsi:type="string">checkout_cart_index</item>
+                <item name="customer_account_index" xsi:type="string">customer_account_index</item>
+                <item name="customer_account_login" xsi:type="string">customer_account_login</item>
+                <item name="customer_account_forgotpassword" xsi:type="string">customer_account_forgotpassword</item>
+                <item name="catalogsearch_result_index" xsi:type="string">catalogsearch_result_index</item>
             </argument>
         </arguments>
     </type>
