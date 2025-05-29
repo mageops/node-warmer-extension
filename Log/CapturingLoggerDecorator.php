@@ -10,7 +10,7 @@ class CapturingLoggerDecorator extends \Psr\Log\AbstractLogger implements \Psr\L
     private $upstreamLogger;
 
     /**
-     * @var array
+     * @var \Monolog\LogRecord[]
      */
     private $buffer = [];
 
@@ -41,6 +41,11 @@ class CapturingLoggerDecorator extends \Psr\Log\AbstractLogger implements \Psr\L
     public function log($level, string|\Stringable $message, array $context = []): void
     {
         $this->upstreamLogger->log($level, $message, $context);
-        $this->buffer[] = [time(), $level, $message];
+        $this->buffer[] = new \Monolog\LogRecord(
+            message: $message,
+            level: \Monolog\Level::fromName($level),
+            channel: 'monolog',
+            datetime: new \Monolog\JsonSerializableDateTimeImmutable(true),
+        );
     }
 }

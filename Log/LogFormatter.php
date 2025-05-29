@@ -4,12 +4,12 @@ namespace MageOps\NodeWarmer\Log;
 
 class LogFormatter implements \Monolog\Formatter\FormatterInterface
 {
-    public function format(array $record)
+    public function format(\Monolog\LogRecord $record)
     {
         return sprintf('[%s] [%s] %s',
-            date('Y-m-d H:i:s', $record[0]),
-            $record[1],
-            $record[2]
+            $record->datetime->format('Y-m-d H:i:s'),
+            $record->level->getName(),
+            $record->message
         );
     }
 
