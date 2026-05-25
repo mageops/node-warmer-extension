@@ -68,6 +68,6 @@ class WarmNodeCommand extends \Symfony\Component\Console\Command\Command
             return \Magento\Framework\Console\Cli::RETURN_FAILURE;
         }
 
-        return \Magento\Framework\Console\Cli::SUCCESS;
+        return \Magento\Framework\Console\Cli::RETURN_SUCCESS;
     }
 }
