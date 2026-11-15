@@ -7,6 +7,7 @@ class NodeWarmer
     const WARM_LOG_FILENAME = 'WARMUP';
     const WARMUP_TIMEOUT = 60;
     const WARMUP_REQUEST_BATCH = 32;
+    const WARMUP_MAX_ATTEMPTS = 3;
 
     /**
      * @var int
@@ -122,7 +123,11 @@ class NodeWarmer
         if($this->config->getDeployedStaticContentVersion() !== $deployedStaticContentVersion) {
             $urls = $this->getUrlsToBeWarmedUp();
 
-            if (!empty($urls)) {
+            $attempt = 1;
+
+            while (!empty($urls) && $attempt <= self::WARMUP_MAX_ATTEMPTS) {
+                $failedUrls = [];
+
                 foreach (array_chunk($urls, $this->warmupRequestBatch) as $urlBatch) {
                     $asyncOperations = [];
 
@@ -155,16 +160,23 @@ class NodeWarmer
                                 $this->warmupRequestBatch -= 1;
                             }
                             // Retry failed requests
-                            $urls[] = [
+                            $failedUrls[] = [
                                 'host' => $asyncOperation['host'],
                                 'path' => $asyncOperation['path']
                             ];
                         }
                     }
                 }
+
+                $urls = $failedUrls;
+                $attempt++;
             }
 
-            $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
+            if (!empty($urls)) {
+                $this->logger->warning('Some warmup urls could not be warmed up', ['count' => count($urls)]);
+            } else {
+                $this->config->updateDeployedStaticContentVersion($deployedStaticContentVersion);
+            }
         }
 
         $took = $stopwatch->stop('warmup')->getDuration() / 1000.0;
